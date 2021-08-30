@@ -1,0 +1,54 @@
+#!/usr/bin/env python3
+
+# pip install gitpython
+import git
+import os
+import re
+
+def checkRepo(repo):
+    dictReturn = {}
+    for strLine in repo.split('\n'):
+        pattern1 = '^([0-9a-fA-F]+)'
+        result1 = re.match(pattern1, strLine)
+        if result1:
+            hash = result1.group(1)
+        #     # print(hash)
+
+        # print(strLine)
+        pattern2 = '^\s.*Migration(\d+)'
+        result2 = re.match(pattern2, strLine)
+        if result2:
+            # print(strLine)
+            file = result2.group(1)
+            # print(file + ' ' + hash)
+            dictReturn[file] = hash
+
+    return dictReturn
+
+def main():
+    if (os.path.exists(".git") == False):
+        print(".git not found.")
+        exit(0)
+
+    repo = git.Repo(search_parent_directories=True)
+
+    current_repo=repo.git.log('--oneline', '--summary', '-n', '100' '--' '"*CeleryMigrations*"')
+    dictCurrent = checkRepo(current_repo)
+
+    develop=repo.git.log('develop', '--oneline', '--summary', '-n', '150' '--' '"*CeleryMigrations*"')
+    dictDevelop = checkRepo(develop)
+
+    for strFile, hash in dictCurrent.items():
+        strCheck = '*'
+        if strFile in dictDevelop.keys():
+            strCheck = '**'
+            if dictDevelop[strFile] == hash:
+                strCheck = ''
+
+        print(strFile + strCheck)
+
+        if (strCheck == ''):
+            break
+
+if __name__== "__main__":
+   main()
