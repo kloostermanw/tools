@@ -1,0 +1,46 @@
+#!/usr/bin/env python3
+
+import requests
+import json
+import argparse
+import base64
+
+# Functions
+def getallrepos():
+    url = "https://api.github.com/" + "user/repos"
+    request_headers = { "Accept" : "application/vnd.github.symmetra-preview+json",
+                        "Content-Type" : "application/json",
+                        "Authorization" : "token " + token }
+    response = requests.get(url,headers=request_headers)
+    return response.json()
+
+
+def getPackages():
+    url = "https://api.github.com/" + "user/" + owner + "/packages"
+    request_headers = { "Accept" : "application/vnd.github.v3+json",
+                        "Content-Type" : "application/json",
+                        "Authorization" : "token " + token }
+    response = requests.get(url,headers=request_headers)
+    return response.json()
+
+def getPackages2(repo):
+    url = "https://api.github.com/" + "repos/" + owner + "/" + repo + "/tags"
+    request_headers = { "Accept" : "application/vnd.github.v3+json",
+                        "Content-Type" : "application/json",
+                        "Authorization" : "token " + token }
+    response = requests.get(url,headers=request_headers)
+    return response.json()
+
+# End Functions
+
+
+# get config
+with open('config.json') as config_file:
+    conf = json.load(config_file)
+
+token       = conf['token']
+owner       = conf['owner']
+
+
+labels = getPackages2(conf['repo'])
+print(labels)
