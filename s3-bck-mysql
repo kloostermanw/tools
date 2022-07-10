@@ -1,0 +1,138 @@
+#!/usr/bin/env php
+<?php
+
+$strOption = $argv[1] ?? null;
+$objClass = new Backup($strOption);
+
+class Backup
+{
+    public const OPTION_HOURLY  = "hourly";
+    public const OPTION_DAILY   = "daily";
+    public const OPTION_WEEKLY  = "weekly";
+    public const OPTION_MONTHLY = "monthly";
+    public const OPTION_YEARLY  = "yearly";
+
+    protected array $num = [
+        'hourly' => 120,
+        'daily' => 14,
+        'weekly' => 26,
+        'monthly' => 24,
+        'yearly' => 3,
+    ];
+
+    //*** 120 + 14 + 26 + 24 + 3 = 187 * 350K = 65M
+
+    protected string $ext = "sql";
+    protected string $option;
+    protected string $db = "genotool_prd";
+    protected string $tempDir = "/afs9/s3-bck-mysql";
+    protected string $file = "";
+    protected string $destination = "/s3mount";
+    protected string $pwd = "";
+
+    //*** Possible options
+    protected array $options = [
+        Backup::OPTION_YEARLY,
+        Backup::OPTION_MONTHLY,
+        Backup::OPTION_WEEKLY,
+        Backup::OPTION_DAILY,
+        Backup::OPTION_HOURLY,
+    ];
+
+    public function __construct(?string $strOption)
+    {
+        if (!is_null($strOption) && in_array($strOption, $this->options, true)) {
+            $this->option = $strOption;
+            $this->setFileName();
+            $this->cleanup();
+            $this->handle();
+        } else {
+            echo "wrong option\n";
+            $strOptions = implode(", ", $this->options);
+            echo "use one of: " . $strOptions . "\n";
+            exit;
+        }
+    }
+
+    protected function handle(): void
+    {
+        $this->createBackupFile();
+    }
+
+    protected function sh($strRun): void
+    {
+        shell_exec($strRun);
+    }
+
+    protected function setFileName(): void
+    {
+        $date = new DateTime();
+        $this->file = $this->option . "-" . $date->format('Ymd-Hi');
+    }
+
+    protected function createBackupFile(): void
+    {
+        $strCmd = "/usr/bin/mysqldump -d   --add-drop-table -u root --password={$this->pwd} {$this->db} > {$this->tempDir}/mysql-{$this->db}-tables.{$this->ext}";
+        $this->sh($strCmd);
+
+        $strCmd = "/usr/bin/mysqldump -all --lock-tables --add-drop-table -u root --password={$this->pwd} {$this->db} --events > {$this->tempDir}/mysql-{$this->db}-alles.{$this->ext}";
+        $this->sh($strCmd);
+
+        $strCmd = "cd {$this->tempDir}; tar -c *.{$this->ext} -f {$this->tempDir}/{$this->file}.tar";
+        $this->sh($strCmd);
+
+        $strCmd = "cd {$this->tempDir}; gzip -f {$this->tempDir}/{$this->file}.tar";
+        $this->sh($strCmd);
+
+        $strCmd = "cp {$this->tempDir}/{$this->file}.tar.gz {$this->destination}/$this->option/{$this->file}.tar.gz";
+        $this->sh($strCmd);
+
+        $strCmd = "rm {$this->tempDir}/*";
+        $this->sh($strCmd);
+    }
+
+    protected function cleanup(): void
+    {
+        $arrFiles = $this->getFiles($this->destination ."/". $this->option);
+        $intMax = $this->num[$this->option];
+        $intValue = count($arrFiles);
+
+        if ($intMax < $intValue) {
+            $intNum = $intValue - $intMax;
+
+            for ($i = 0; $i <= $intNum; $i++) {
+                $file = $this->destination ."/". $this->option ."/". $arrFiles[$i];
+                echo $file . "\n";
+                $this->sh("rm $file");
+            }
+        }
+    }
+
+    protected function getFiles(string $strDirectory): array
+    {
+        $arrReturn = [];
+
+        $arrFiles = scandir($strDirectory);
+
+        foreach ($arrFiles as $strFile) {
+            if ($this->endsWith($strFile, "tar.gz")) {
+                $arrReturn[] = $strFile;
+            }
+        }
+
+        sort($arrReturn);
+
+        return $arrReturn;
+    }
+
+    protected function endsWith($strValue, $strExt): bool
+    {
+        $length = strlen($strExt);
+
+        if (!$length) {
+            return true;
+        }
+
+        return substr($strValue, -$length) === $strExt;
+    }
+}
